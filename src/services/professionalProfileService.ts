@@ -1,4 +1,5 @@
 import { supabase } from '../supabaseClient';
+import type { Professional } from '../types';
 
 export interface ProfessionalProfileInput {
   name: string;
@@ -12,6 +13,37 @@ export interface ProfessionalProfileInput {
 export type CreateProfessionalProfileResult =
   | { success: true }
   | { success: false; reason: 'unauthenticated' | 'already_exists' | 'unexpected' };
+
+interface ProfessionalProfileRow {
+  id: string;
+  name: string;
+  phone: string;
+  city: string;
+  skills: string[];
+  availability: string;
+  experience: string;
+}
+
+export async function getProfessionalProfiles(): Promise<Professional[]> {
+  const { data, error } = await supabase
+    .from('professional_profiles')
+    .select('id, name, phone, city, skills, availability, experience')
+    .order('created_at', { ascending: false });
+
+  if (error) {
+    throw error;
+  }
+
+  return (data as ProfessionalProfileRow[]).map((profile) => ({
+    id: profile.id,
+    name: profile.name,
+    whatsapp: profile.phone,
+    city: profile.city,
+    skills: profile.skills,
+    availability: profile.availability,
+    experience: profile.experience,
+  }));
+}
 
 export async function createProfessionalProfile(
   profile: ProfessionalProfileInput

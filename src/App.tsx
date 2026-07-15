@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { supabase } from './supabaseClient';
 import type { User } from '@supabase/supabase-js';
 import { View, Job } from './types';
-import { initialProfessionals, initialJobs } from './data';
+import { initialJobs } from './data';
 import LandingPage from './components/LandingPage';
 import CompanyArea from './components/CompanyArea';
 import ProfessionalArea from './components/ProfessionalArea';
@@ -10,7 +10,6 @@ import JobBoard from './components/JobBoard';
 
 function App() {
   const [view, setView] = useState<View>('landing');
-  const professionals = initialProfessionals;
   const [jobs, setJobs] = useState<Job[]>(initialJobs);
   const [user, setUser] = useState<User | null>(null);
 
@@ -77,7 +76,7 @@ const handleGoogleLogin = async () => {
       )}
 
       {view === 'company' && (
-        <CompanyArea professionals={professionals} onNavigate={setView} />
+        <CompanyArea onNavigate={setView} />
       )}
 
       {view === 'professional' && (

@@ -1,17 +1,48 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { ArrowLeft, Search, MapPin, Clock, Star, Phone, Briefcase } from 'lucide-react';
 import { Professional, View } from '../types';
 import { cities, skills, availabilities } from '../data';
+import { getProfessionalProfiles } from '../services/professionalProfileService';
 
 interface CompanyAreaProps {
-  professionals: Professional[];
   onNavigate: (view: View) => void;
 }
 
-export default function CompanyArea({ professionals, onNavigate }: CompanyAreaProps) {
+export default function CompanyArea({ onNavigate }: CompanyAreaProps) {
+  const [professionals, setProfessionals] = useState<Professional[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [loadError, setLoadError] = useState(false);
   const [cityFilter, setCityFilter] = useState('');
   const [skillFilter, setSkillFilter] = useState('');
   const [availFilter, setAvailFilter] = useState('');
+
+  useEffect(() => {
+    let isMounted = true;
+
+    const loadProfessionals = async () => {
+      try {
+        const profiles = await getProfessionalProfiles();
+
+        if (isMounted) {
+          setProfessionals(profiles);
+        }
+      } catch {
+        if (isMounted) {
+          setLoadError(true);
+        }
+      } finally {
+        if (isMounted) {
+          setIsLoading(false);
+        }
+      }
+    };
+
+    void loadProfessionals();
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
 
   const filtered = professionals.filter((p) => {
     if (cityFilter && p.city !== cityFilter) return false;
@@ -114,14 +145,16 @@ export default function CompanyArea({ professionals, onNavigate }: CompanyAreaPr
           )}
         </div>
 
-        {/* Results count */}
-        <p className="text-sm text-gray-500 mb-4">
-          {filtered.length} profissional{filtered.length !== 1 ? 'is' : ''} encontrado{filtered.length !== 1 ? 's' : ''}
-        </p>
+        {!isLoading && !loadError && (
+          <p className="text-sm text-gray-500 mb-4">
+            {filtered.length} profissional{filtered.length !== 1 ? 'is' : ''} encontrado{filtered.length !== 1 ? 's' : ''}
+          </p>
+        )}
 
         {/* Professional cards */}
-        <div className="grid sm:grid-cols-2 gap-6">
-          {filtered.map((p) => (
+        {!isLoading && !loadError && (
+          <div className="grid sm:grid-cols-2 gap-6">
+            {filtered.map((p) => (
             <div key={p.id} className="card">
               <div className="flex items-start justify-between mb-3">
                 <h3 className="font-semibold text-navy-800 text-lg">{p.name}</h3>
@@ -169,10 +202,30 @@ export default function CompanyArea({ professionals, onNavigate }: CompanyAreaPr
                 Entrar em contato
               </a>
             </div>
-          ))}
-        </div>
+            ))}
+          </div>
+        )}
 
-        {filtered.length === 0 && (
+        {isLoading && (
+          <div className="text-center py-16" role="status">
+            <p className="text-gray-500">Carregando profissionais...</p>
+          </div>
+        )}
+
+        {loadError && (
+          <div className="text-center py-16" role="alert">
+            <p className="text-red-600">Não foi possível carregar os profissionais. Tente novamente mais tarde.</p>
+          </div>
+        )}
+
+        {!isLoading && !loadError && professionals.length === 0 && (
+          <div className="text-center py-16">
+            <Search className="w-12 h-12 text-gray-300 mx-auto mb-4" />
+            <p className="text-gray-500">Nenhum perfil profissional cadastrado.</p>
+          </div>
+        )}
+
+        {!isLoading && !loadError && professionals.length > 0 && filtered.length === 0 && (
           <div className="text-center py-16">
             <Search className="w-12 h-12 text-gray-300 mx-auto mb-4" />
             <p className="text-gray-500">Nenhum profissional encontrado com esses filtros.</p>
