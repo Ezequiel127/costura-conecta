@@ -182,6 +182,16 @@ export default function CompanyArea({ onNavigate }: CompanyAreaProps) {
                   {p.availability}
                 </div>
               </div>
+              <div className="flex items-center gap-2 mb-4">
+                <div className="flex items-center gap-0.5 text-amber-400" aria-hidden="true">
+                  {Array.from({ length: 5 }).map((_, index) => (
+                    <Star key={index} className="w-4 h-4 fill-current" />
+                  ))}
+                </div>
+                <p className="text-xs text-gray-500">
+                  <span className="font-semibold text-gray-700">5,0</span> · Avaliação demonstrativa
+                </p>
+              </div>
               <div className="flex flex-wrap gap-1.5 mb-4">
                 {p.skills.map((skill) => (
                   <span
