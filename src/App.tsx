@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { supabase } from './supabaseClient';
 import type { User } from '@supabase/supabase-js';
-import { View, Professional, Job } from './types';
+import { View, Job } from './types';
 import { initialProfessionals, initialJobs } from './data';
 import LandingPage from './components/LandingPage';
 import CompanyArea from './components/CompanyArea';
@@ -10,7 +10,7 @@ import JobBoard from './components/JobBoard';
 
 function App() {
   const [view, setView] = useState<View>('landing');
-  const [professionals, setProfessionals] = useState<Professional[]>(initialProfessionals);
+  const professionals = initialProfessionals;
   const [jobs, setJobs] = useState<Job[]>(initialJobs);
   const [user, setUser] = useState<User | null>(null);
 
@@ -27,10 +27,6 @@ function App() {
       listener.subscription.unsubscribe();
     };
   }, []);
-
-  const handleRegister = (professional: Professional) => {
-    setProfessionals((prev) => [professional, ...prev]);
-  };
 
   const handlePublishJob = (job: Job) => {
     setJobs((prev) => [job, ...prev]);
@@ -85,7 +81,7 @@ const handleGoogleLogin = async () => {
       )}
 
       {view === 'professional' && (
-        <ProfessionalArea onRegister={handleRegister} onNavigate={setView} />
+        <ProfessionalArea onNavigate={setView} />
       )}
 
       {view === 'jobs' && (

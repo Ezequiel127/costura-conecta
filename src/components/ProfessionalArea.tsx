@@ -1,14 +1,20 @@
 import { useState } from 'react';
-import { ArrowLeft, UserPlus, CheckCircle } from 'lucide-react';
-import { Professional, View } from '../types';
+import { AlertCircle, ArrowLeft, CheckCircle, Loader2 as LoaderCircle, UserPlus } from 'lucide-react';
+import { View } from '../types';
 import { cities, skills, availabilities } from '../data';
+import { createProfessionalProfile } from '../services/professionalProfileService';
 
 interface ProfessionalAreaProps {
-  onRegister: (professional: Professional) => void;
   onNavigate: (view: View) => void;
 }
 
-export default function ProfessionalArea({ onRegister, onNavigate }: ProfessionalAreaProps) {
+const profileErrorMessages = {
+  unauthenticated: 'Você precisa entrar com sua conta antes de cadastrar o perfil.',
+  already_exists: 'Esta conta já possui um perfil profissional cadastrado.',
+  unexpected: 'Não foi possível salvar o perfil agora. Tente novamente mais tarde.',
+};
+
+export default function ProfessionalArea({ onNavigate }: ProfessionalAreaProps) {
   const [name, setName] = useState('');
   const [city, setCity] = useState('');
   const [selectedSkills, setSelectedSkills] = useState<string[]>([]);
@@ -16,6 +22,8 @@ export default function ProfessionalArea({ onRegister, onNavigate }: Professiona
   const [whatsapp, setWhatsapp] = useState('');
   const [experience, setExperience] = useState('');
   const [success, setSuccess] = useState(false);
+  const [errorMessage, setErrorMessage] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   const toggleSkill = (skill: string) => {
     setSelectedSkills((prev) =>
@@ -23,29 +31,50 @@ export default function ProfessionalArea({ onRegister, onNavigate }: Professiona
     );
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!name || !city || selectedSkills.length === 0 || !availability || !whatsapp) return;
+    setSuccess(false);
+    setErrorMessage('');
 
-    const newProfessional: Professional = {
-      id: Date.now().toString(),
-      name,
-      city,
-      skills: selectedSkills,
-      availability,
-      experience,
-      whatsapp,
-    };
+    const hasEmptyRequiredField = [name.trim(), city, availability, whatsapp.trim()].some(
+      (value) => !value
+    );
+    const hasNoSelectedSkills = selectedSkills.length === 0;
 
-    onRegister(newProfessional);
-    setSuccess(true);
-    setName('');
-    setCity('');
-    setSelectedSkills([]);
-    setAvailability('');
-    setWhatsapp('');
-    setExperience('');
-    setTimeout(() => setSuccess(false), 4000);
+    if ([hasEmptyRequiredField, hasNoSelectedSkills].some(Boolean)) {
+      setErrorMessage('Preencha todos os campos obrigatórios antes de continuar.');
+      return;
+    }
+
+    setIsSubmitting(true);
+
+    try {
+      const result = await createProfessionalProfile({
+        name,
+        phone: whatsapp,
+        city,
+        skills: selectedSkills,
+        availability,
+        experience,
+      });
+
+      if (!result.success) {
+        setErrorMessage(profileErrorMessages[result.reason]);
+        return;
+      }
+
+      setSuccess(true);
+      setName('');
+      setCity('');
+      setSelectedSkills([]);
+      setAvailability('');
+      setWhatsapp('');
+      setExperience('');
+    } catch {
+      setErrorMessage(profileErrorMessages.unexpected);
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (
@@ -67,11 +96,21 @@ export default function ProfessionalArea({ onRegister, onNavigate }: Professiona
 
       <div className="max-w-xl mx-auto px-6 py-8">
         {success && (
-          <div className="mb-6 bg-green-50 border border-green-200 text-green-700 rounded-xl p-4 flex items-center gap-3">
+          <div role="status" className="mb-6 bg-green-50 border border-green-200 text-green-700 rounded-xl p-4 flex items-center gap-3">
             <CheckCircle className="w-5 h-5 flex-shrink-0" />
             <span className="text-sm font-medium">Cadastro realizado com sucesso! Seu perfil já está visível para empresas.</span>
           </div>
         )}
+
+        {errorMessage ? (
+          <div
+            role="alert"
+            className="mb-6 bg-red-50 border border-red-200 text-red-700 rounded-xl p-4 flex items-center gap-3"
+          >
+            <AlertCircle className="w-5 h-5 flex-shrink-0" />
+            <span className="text-sm font-medium">{errorMessage}</span>
+          </div>
+        ) : null}
 
         <form onSubmit={handleSubmit} className="card">
           <div className="flex items-center gap-2 mb-6">
@@ -159,9 +198,17 @@ export default function ProfessionalArea({ onRegister, onNavigate }: Professiona
               />
             </div>
 
-            <button type="submit" className="btn-secondary w-full flex items-center justify-center gap-2">
-              <UserPlus className="w-5 h-5" />
-              Cadastrar perfil
+            <button
+              type="submit"
+              disabled={isSubmitting}
+              className="btn-secondary w-full flex items-center justify-center gap-2 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {isSubmitting ? (
+                <LoaderCircle className="w-5 h-5 animate-spin" />
+              ) : (
+                <UserPlus className="w-5 h-5" />
+              )}
+              {isSubmitting ? 'Salvando...' : 'Cadastrar perfil'}
             </button>
           </div>
         </form>
