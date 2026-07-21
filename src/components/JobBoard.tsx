@@ -8,6 +8,7 @@ import {
   CheckCircle,
   Clock,
   Loader2 as LoaderCircle,
+  LogIn,
   MapPin,
   Pencil,
   Phone,
@@ -30,6 +31,12 @@ import { getCurrentCompanyProfile } from '../services/companyProfileService';
 interface JobBoardProps {
   user: User | null;
   onNavigate: (view: View) => void;
+}
+
+interface CompanyProfileAuthorization {
+  userId: string;
+  profileId: string | null;
+  hasError: boolean;
 }
 
 const publicationErrorMessages = {
@@ -155,12 +162,8 @@ export default function JobBoard({ user, onNavigate }: JobBoardProps) {
   const [loadError, setLoadError] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState('');
-  const [currentCompanyProfileId, setCurrentCompanyProfileId] = useState<
-    string | null
-  >(null);
-  const [currentCompanyUserId, setCurrentCompanyUserId] = useState<
-    string | null
-  >(null);
+  const [companyProfileAuthorization, setCompanyProfileAuthorization] =
+    useState<CompanyProfileAuthorization | null>(null);
   const [editingJobId, setEditingJobId] = useState<string | null>(null);
   const [editInput, setEditInput] = useState<JobInput>({
     title: '',
@@ -175,6 +178,17 @@ export default function JobBoard({ user, onNavigate }: JobBoardProps) {
   const [deleteError, setDeleteError] = useState('');
   const [managementSuccess, setManagementSuccess] = useState('');
   const userId = user?.id;
+  const hasCurrentCompanyAuthorization =
+    Boolean(userId) && companyProfileAuthorization?.userId === userId;
+  const isCompanyProfileLoading =
+    Boolean(userId) && !hasCurrentCompanyAuthorization;
+  const hasCompanyProfileCheckError =
+    hasCurrentCompanyAuthorization &&
+    companyProfileAuthorization?.hasError === true;
+  const currentCompanyProfileId =
+    hasCurrentCompanyAuthorization && !hasCompanyProfileCheckError
+      ? companyProfileAuthorization?.profileId ?? null
+      : null;
 
   useEffect(() => {
     let isMounted = true;
@@ -206,10 +220,9 @@ export default function JobBoard({ user, onNavigate }: JobBoardProps) {
   useEffect(() => {
     let isMounted = true;
 
-    setCurrentCompanyProfileId(null);
-    setCurrentCompanyUserId(null);
-
     if (!userId) {
+      setCompanyProfileAuthorization(null);
+
       return () => {
         isMounted = false;
       };
@@ -222,14 +235,20 @@ export default function JobBoard({ user, onNavigate }: JobBoardProps) {
         return;
       }
 
-      if (result.success && result.profile) {
-        setCurrentCompanyProfileId(result.profile.id);
-        setCurrentCompanyUserId(userId);
+      if (!result.success) {
+        setCompanyProfileAuthorization({
+          userId,
+          profileId: null,
+          hasError: true,
+        });
         return;
       }
 
-      setCurrentCompanyProfileId(null);
-      setCurrentCompanyUserId(null);
+      setCompanyProfileAuthorization({
+        userId,
+        profileId: result.profile?.id ?? null,
+        hasError: false,
+      });
     };
 
     void loadCurrentCompanyProfile();
@@ -314,7 +333,6 @@ export default function JobBoard({ user, onNavigate }: JobBoardProps) {
       !job ||
       !user ||
       !currentCompanyProfileId ||
-      currentCompanyUserId !== user.id ||
       job.companyId !== currentCompanyProfileId
     ) {
       setUpdateError(updateErrorMessages.non_owned);
@@ -427,6 +445,58 @@ export default function JobBoard({ user, onNavigate }: JobBoardProps) {
         <div className="grid lg:grid-cols-5 gap-8">
           {/* Form */}
           <div className="lg:col-span-2">
+            {!user ? (
+              <div className="card py-8 text-center">
+                <LogIn className="w-10 h-10 text-navy-400 mx-auto mb-4" />
+                <h2 className="font-semibold text-navy-800 text-lg mb-2">
+                  Publicar vaga
+                </h2>
+                <p className="text-sm text-gray-500 mb-6">
+                  Entre com sua conta para publicar uma vaga.
+                </p>
+                <button
+                  type="button"
+                  onClick={() => onNavigate('landing')}
+                  className="btn-primary w-full inline-flex items-center justify-center gap-2"
+                >
+                  <LogIn className="w-4 h-4" />
+                  Ir para entrar
+                </button>
+              </div>
+            ) : isCompanyProfileLoading ? (
+              <div className="card py-8 text-center" role="status">
+                <LoaderCircle className="w-7 h-7 text-navy-500 animate-spin mx-auto mb-3" />
+                <p className="text-sm text-gray-500">
+                  Verificando cadastro da empresa...
+                </p>
+              </div>
+            ) : hasCompanyProfileCheckError ? (
+              <div className="card py-8 text-center" role="alert">
+                <AlertCircle className="w-9 h-9 text-red-400 mx-auto mb-3" />
+                <p className="text-sm text-red-600">
+                  Não foi possível verificar sua empresa agora. Tente novamente mais tarde.
+                </p>
+              </div>
+            ) : !currentCompanyProfileId ? (
+              <div className="card py-8 text-center">
+                <Building2 className="w-10 h-10 text-navy-400 mx-auto mb-4" />
+                <h2 className="font-semibold text-navy-800 text-lg mb-2">
+                  Publicar vaga
+                </h2>
+                <p className="text-sm text-gray-500 mb-6">
+                  Cadastre sua empresa para publicar vagas.
+                </p>
+                <button
+                  type="button"
+                  onClick={() => onNavigate('company')}
+                  className="btn-primary w-full inline-flex items-center justify-center gap-2"
+                >
+                  <Building2 className="w-4 h-4" />
+                  Cadastrar empresa
+                </button>
+              </div>
+            ) : (
+              <>
             {success && (
               <div className="mb-6 bg-green-50 border border-green-200 text-green-700 rounded-xl p-4 flex items-center gap-3">
                 <CheckCircle className="w-5 h-5 flex-shrink-0" />
@@ -519,6 +589,8 @@ export default function JobBoard({ user, onNavigate }: JobBoardProps) {
                 </button>
               </div>
             </form>
+              </>
+            )}
           </div>
 
           {/* Job list */}
@@ -575,7 +647,6 @@ export default function JobBoard({ user, onNavigate }: JobBoardProps) {
                   const whatsAppUrl = getJobWhatsAppUrl(job);
                   const canManage = Boolean(
                     user &&
-                      currentCompanyUserId === user.id &&
                       currentCompanyProfileId &&
                       job.companyId === currentCompanyProfileId
                   );
