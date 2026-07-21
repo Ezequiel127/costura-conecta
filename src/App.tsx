@@ -76,7 +76,7 @@ const handleGoogleLogin = async () => {
       )}
 
       {view === 'company' && (
-        <CompanyArea onNavigate={setView} />
+        <CompanyArea user={user} onNavigate={setView} />
       )}
 
       {view === 'professional' && (

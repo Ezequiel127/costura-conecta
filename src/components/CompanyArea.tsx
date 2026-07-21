@@ -1,17 +1,37 @@
 import { useEffect, useState } from 'react';
-import { ArrowLeft, Search, MapPin, Clock, Star, Phone, Briefcase } from 'lucide-react';
+import type { User } from '@supabase/supabase-js';
+import {
+  AlertCircle,
+  ArrowLeft,
+  Briefcase,
+  Building2,
+  CheckCircle,
+  Clock,
+  Loader2 as LoaderCircle,
+  MapPin,
+  Phone,
+  Search,
+  Star,
+} from 'lucide-react';
 import { Professional, View } from '../types';
 import { cities, skills, availabilities } from '../data';
 import { getProfessionalProfiles } from '../services/professionalProfileService';
+import { getCurrentCompanyProfile } from '../services/companyProfileService';
+import CompanyProfileForm from './CompanyProfileForm';
 
 interface CompanyAreaProps {
+  user: User | null;
   onNavigate: (view: View) => void;
 }
 
-export default function CompanyArea({ onNavigate }: CompanyAreaProps) {
+type CompanyProfileState = 'loading' | 'unauthenticated' | 'missing' | 'existing' | 'error';
+
+export default function CompanyArea({ user, onNavigate }: CompanyAreaProps) {
   const [professionals, setProfessionals] = useState<Professional[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [loadError, setLoadError] = useState(false);
+  const [companyProfileState, setCompanyProfileState] = useState<CompanyProfileState>('loading');
+  const [registrationSuccess, setRegistrationSuccess] = useState(false);
   const [cityFilter, setCityFilter] = useState('');
   const [skillFilter, setSkillFilter] = useState('');
   const [availFilter, setAvailFilter] = useState('');
@@ -43,6 +63,46 @@ export default function CompanyArea({ onNavigate }: CompanyAreaProps) {
       isMounted = false;
     };
   }, []);
+
+  useEffect(() => {
+    let isMounted = true;
+
+    const loadCompanyProfile = async () => {
+      setCompanyProfileState('loading');
+      setRegistrationSuccess(false);
+
+      const result = await getCurrentCompanyProfile();
+
+      if (!isMounted) {
+        return;
+      }
+
+      if (!result.success) {
+        setCompanyProfileState(
+          result.reason === 'unauthenticated' ? 'unauthenticated' : 'error'
+        );
+        return;
+      }
+
+      setCompanyProfileState(result.profile ? 'existing' : 'missing');
+    };
+
+    void loadCompanyProfile();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [user]);
+
+  const handleCompanyCreated = () => {
+    setRegistrationSuccess(true);
+    setCompanyProfileState('existing');
+  };
+
+  const handleCompanyAlreadyExists = () => {
+    setRegistrationSuccess(false);
+    setCompanyProfileState('existing');
+  };
 
   const filtered = professionals.filter((p) => {
     if (cityFilter && p.city !== cityFilter) return false;
@@ -88,6 +148,58 @@ export default function CompanyArea({ onNavigate }: CompanyAreaProps) {
       </header>
 
       <div className="max-w-5xl mx-auto px-6 py-8">
+        {companyProfileState === 'loading' && (
+          <div className={'card mb-8 flex items-center gap-3 text-gray-600'} role={'status'}>
+            <LoaderCircle className={'w-5 h-5 animate-spin text-navy-600'} />
+            <p className={'text-sm'}>Verificando cadastro empresarial...</p>
+          </div>
+        )}
+
+        {companyProfileState === 'error' && (
+          <div
+            className={'mb-8 bg-red-50 border border-red-200 text-red-700 rounded-xl p-4 flex items-center gap-3'}
+            role={'alert'}
+          >
+            <AlertCircle className={'w-5 h-5 flex-shrink-0'} />
+            <p className={'text-sm font-medium'}>
+              Não foi possível verificar o cadastro empresarial agora. Tente novamente mais tarde.
+            </p>
+          </div>
+        )}
+
+        {companyProfileState === 'unauthenticated' && (
+          <div className={'card mb-8 flex items-start gap-3'}>
+            <Building2 className={'w-5 h-5 flex-shrink-0 text-navy-600 mt-0.5'} />
+            <div>
+              <h2 className={'font-semibold text-navy-800'}>Cadastre sua empresa</h2>
+              <p className={'text-sm text-gray-600 mt-1'}>
+                Entre com sua conta para cadastrar uma empresa. A busca de profissionais continua disponível abaixo.
+              </p>
+            </div>
+          </div>
+        )}
+
+        {companyProfileState === 'missing' && (
+          <CompanyProfileForm
+            onCreated={handleCompanyCreated}
+            onAlreadyExists={handleCompanyAlreadyExists}
+          />
+        )}
+
+        {companyProfileState === 'existing' && (
+          <div
+            className={'mb-8 bg-green-50 border border-green-200 text-green-700 rounded-xl p-4 flex items-center gap-3'}
+            role={'status'}
+          >
+            <CheckCircle className={'w-5 h-5 flex-shrink-0'} />
+            <p className={'text-sm font-medium'}>
+              {registrationSuccess
+                ? 'Empresa cadastrada com sucesso.'
+                : 'Esta conta já possui uma empresa cadastrada.'}
+            </p>
+          </div>
+        )}
+
         {/* Filters */}
         <div className="card mb-8">
           <div className="flex items-center gap-2 mb-4">
