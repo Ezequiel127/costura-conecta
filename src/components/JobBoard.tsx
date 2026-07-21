@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import type { User } from '@supabase/supabase-js';
 import {
   AlertCircle,
   ArrowLeft,
@@ -8,15 +9,26 @@ import {
   Clock,
   Loader2 as LoaderCircle,
   MapPin,
+  Pencil,
   Phone,
   Plus,
+  Trash2,
   Wrench,
+  X,
 } from 'lucide-react';
-import { Job, View } from '../types';
+import type { Job, View } from '../types';
 import { cities, skills } from '../data';
-import { createJob, getJobs } from '../services/jobService';
+import {
+  createJob,
+  deleteJob,
+  getJobs,
+  updateJob,
+  type JobInput,
+} from '../services/jobService';
+import { getCurrentCompanyProfile } from '../services/companyProfileService';
 
 interface JobBoardProps {
+  user: User | null;
   onNavigate: (view: View) => void;
 }
 
@@ -26,10 +38,64 @@ const publicationErrorMessages = {
   unexpected: 'Não foi possível publicar a vaga agora. Tente novamente mais tarde.',
 };
 
+const updateErrorMessages = {
+  unauthenticated: 'Você precisa entrar com sua conta antes de editar uma vaga.',
+  missing_company_profile: 'Cadastre uma empresa antes de editar uma vaga.',
+  invalid_input: 'Revise os campos da vaga antes de salvar.',
+  non_owned: 'Esta vaga não pertence à sua empresa ou não está mais disponível.',
+  unexpected: 'Não foi possível salvar as alterações agora. Tente novamente mais tarde.',
+};
+
+const deleteErrorMessages = {
+  unauthenticated: 'Você precisa entrar com sua conta antes de excluir uma vaga.',
+  missing_company_profile: 'Cadastre uma empresa antes de excluir uma vaga.',
+  non_owned: 'Esta vaga não pertence à sua empresa ou não está mais disponível.',
+  unexpected: 'Não foi possível excluir a vaga agora. Tente novamente mais tarde.',
+};
+
 function formatDateOnly(date: string) {
   const [year, month, day] = date.split('-');
 
   return day && month && year ? [day, month, year].join('/') : date;
+}
+
+function isValidDateOnly(value: string): boolean {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
+
+  if (!match) {
+    return false;
+  }
+
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  const date = new Date(Date.UTC(year, month - 1, day));
+
+  return (
+    date.getUTCFullYear() === year &&
+    date.getUTCMonth() === month - 1 &&
+    date.getUTCDate() === day
+  );
+}
+
+function getJobInput(job: Job): JobInput {
+  return {
+    title: job.title,
+    city: job.city,
+    skill: job.skill,
+    deadline: job.deadline,
+    description: job.description,
+  };
+}
+
+function hasJobChanged(job: Job, input: JobInput): boolean {
+  return (
+    job.title !== input.title ||
+    job.city !== input.city ||
+    job.skill !== input.skill ||
+    job.deadline !== input.deadline ||
+    job.description !== input.description
+  );
 }
 
 function normalizeBrazilianPhone(phone?: string): string | null {
@@ -77,7 +143,7 @@ function getJobWhatsAppUrl(job: Job): string | null {
   return 'https://wa.me/' + normalizedPhone + '?' + searchParams.toString();
 }
 
-export default function JobBoard({ onNavigate }: JobBoardProps) {
+export default function JobBoard({ user, onNavigate }: JobBoardProps) {
   const [jobs, setJobs] = useState<Job[]>([]);
   const [title, setTitle] = useState('');
   const [city, setCity] = useState('');
@@ -89,6 +155,26 @@ export default function JobBoard({ onNavigate }: JobBoardProps) {
   const [loadError, setLoadError] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState('');
+  const [currentCompanyProfileId, setCurrentCompanyProfileId] = useState<
+    string | null
+  >(null);
+  const [currentCompanyUserId, setCurrentCompanyUserId] = useState<
+    string | null
+  >(null);
+  const [editingJobId, setEditingJobId] = useState<string | null>(null);
+  const [editInput, setEditInput] = useState<JobInput>({
+    title: '',
+    city: '',
+    skill: '',
+    deadline: '',
+    description: '',
+  });
+  const [savingJobId, setSavingJobId] = useState<string | null>(null);
+  const [deletingJobId, setDeletingJobId] = useState<string | null>(null);
+  const [updateError, setUpdateError] = useState('');
+  const [deleteError, setDeleteError] = useState('');
+  const [managementSuccess, setManagementSuccess] = useState('');
+  const userId = user?.id;
 
   useEffect(() => {
     let isMounted = true;
@@ -117,6 +203,42 @@ export default function JobBoard({ onNavigate }: JobBoardProps) {
     };
   }, []);
 
+  useEffect(() => {
+    let isMounted = true;
+
+    setCurrentCompanyProfileId(null);
+    setCurrentCompanyUserId(null);
+
+    if (!userId) {
+      return () => {
+        isMounted = false;
+      };
+    }
+
+    const loadCurrentCompanyProfile = async () => {
+      const result = await getCurrentCompanyProfile();
+
+      if (!isMounted) {
+        return;
+      }
+
+      if (result.success && result.profile) {
+        setCurrentCompanyProfileId(result.profile.id);
+        setCurrentCompanyUserId(userId);
+        return;
+      }
+
+      setCurrentCompanyProfileId(null);
+      setCurrentCompanyUserId(null);
+    };
+
+    void loadCurrentCompanyProfile();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [userId]);
+
   const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     setSuccess(false);
@@ -134,7 +256,7 @@ export default function JobBoard({ onNavigate }: JobBoardProps) {
 
     if (
       requiredFields.some((value) => !value) ||
-      !/^\d{4}-\d{2}-\d{2}$/.test(jobInput.deadline)
+      !isValidDateOnly(jobInput.deadline)
     ) {
       setSubmitError('Preencha todos os campos obrigatórios antes de continuar.');
       return;
@@ -164,6 +286,123 @@ export default function JobBoard({ onNavigate }: JobBoardProps) {
       setSubmitError(publicationErrorMessages.unexpected);
     } finally {
       setIsSubmitting(false);
+    }
+  };
+
+  const handleStartEditing = (job: Job) => {
+    setEditingJobId(job.id);
+    setEditInput(getJobInput(job));
+    setUpdateError('');
+    setDeleteError('');
+    setManagementSuccess('');
+  };
+
+  const handleCancelEditing = () => {
+    setEditingJobId(null);
+    setUpdateError('');
+  };
+
+  const handleUpdate = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    setUpdateError('');
+    setDeleteError('');
+    setManagementSuccess('');
+
+    const job = jobs.find((currentJob) => currentJob.id === editingJobId);
+
+    if (
+      !job ||
+      !user ||
+      !currentCompanyProfileId ||
+      currentCompanyUserId !== user.id ||
+      job.companyId !== currentCompanyProfileId
+    ) {
+      setUpdateError(updateErrorMessages.non_owned);
+      return;
+    }
+
+    const normalizedInput: JobInput = {
+      title: editInput.title.trim(),
+      city: editInput.city.trim(),
+      skill: editInput.skill.trim(),
+      deadline: editInput.deadline.trim(),
+      description: editInput.description.trim(),
+    };
+
+    if (
+      Object.values(normalizedInput).some((value) => !value) ||
+      !isValidDateOnly(normalizedInput.deadline)
+    ) {
+      setUpdateError(
+        'Preencha todos os campos obrigatórios e informe uma data válida.'
+      );
+      return;
+    }
+
+    if (!hasJobChanged(job, normalizedInput)) {
+      setUpdateError('Altere pelo menos um campo antes de salvar.');
+      return;
+    }
+
+    setSavingJobId(job.id);
+
+    try {
+      const result = await updateJob(job.id, normalizedInput);
+
+      if (!result.success) {
+        setUpdateError(updateErrorMessages[result.reason]);
+        return;
+      }
+
+      setJobs((currentJobs) =>
+        currentJobs.map((currentJob) =>
+          currentJob.id === result.job.id ? result.job : currentJob
+        )
+      );
+      setEditingJobId(null);
+      setManagementSuccess('Vaga atualizada com sucesso!');
+    } catch {
+      setUpdateError(updateErrorMessages.unexpected);
+    } finally {
+      setSavingJobId(null);
+    }
+  };
+
+  const handleDelete = async (job: Job) => {
+    const confirmed = window.confirm(
+      'Tem certeza de que deseja excluir esta vaga? Esta ação não poderá ser desfeita.'
+    );
+
+    if (!confirmed) {
+      return;
+    }
+
+    setUpdateError('');
+    setDeleteError('');
+    setManagementSuccess('');
+    setDeletingJobId(job.id);
+
+    try {
+      const result = await deleteJob(job.id);
+
+      if (!result.success) {
+        setDeleteError(deleteErrorMessages[result.reason]);
+        return;
+      }
+
+      setJobs((currentJobs) =>
+        currentJobs.filter((currentJob) => currentJob.id !== job.id)
+      );
+
+      if (editingJobId === job.id) {
+        setEditingJobId(null);
+      }
+
+      setManagementSuccess('Vaga excluída com sucesso!');
+    } catch {
+      setDeleteError(deleteErrorMessages.unexpected);
+    } finally {
+      setDeletingJobId(null);
     }
   };
 
@@ -289,6 +528,27 @@ export default function JobBoard({ onNavigate }: JobBoardProps) {
               Vagas publicadas ({jobs.length})
             </h2>
 
+            {managementSuccess && (
+              <div className='mb-4 bg-green-50 border border-green-200 text-green-700 rounded-xl p-4 flex items-center gap-3' role='status'>
+                <CheckCircle className='w-5 h-5 flex-shrink-0' />
+                <span className='text-sm font-medium'>{managementSuccess}</span>
+              </div>
+            )}
+
+            {updateError && (
+              <div className='mb-4 bg-red-50 border border-red-200 text-red-700 rounded-xl p-4 flex items-center gap-3' role='alert'>
+                <AlertCircle className='w-5 h-5 flex-shrink-0' />
+                <span className='text-sm font-medium'>{updateError}</span>
+              </div>
+            )}
+
+            {deleteError && (
+              <div className='mb-4 bg-red-50 border border-red-200 text-red-700 rounded-xl p-4 flex items-center gap-3' role='alert'>
+                <AlertCircle className='w-5 h-5 flex-shrink-0' />
+                <span className='text-sm font-medium'>{deleteError}</span>
+              </div>
+            )}
+
             {isLoading ? (
               <div className="card text-center py-12" role="status">
                 <LoaderCircle className="w-8 h-8 text-navy-500 animate-spin mx-auto mb-4" />
@@ -313,9 +573,151 @@ export default function JobBoard({ onNavigate }: JobBoardProps) {
               <div className="space-y-4">
                 {jobs.map((job) => {
                   const whatsAppUrl = getJobWhatsAppUrl(job);
+                  const canManage = Boolean(
+                    user &&
+                      currentCompanyUserId === user.id &&
+                      currentCompanyProfileId &&
+                      job.companyId === currentCompanyProfileId
+                  );
+                  const isEditing = canManage && editingJobId === job.id;
+                  const isSaving = savingJobId === job.id;
+                  const isDeleting = deletingJobId === job.id;
+                  const isOperationRunning = Boolean(
+                    savingJobId || deletingJobId
+                  );
 
                   return (
-                    <div key={job.id} className="card">
+                    <div key={job.id} className='card'>
+                      {isEditing ? (
+                        <form onSubmit={handleUpdate} className='space-y-5'>
+                          <div className='flex items-start justify-between gap-4'>
+                            <h3 className='font-semibold text-navy-800'>
+                              Editar vaga
+                            </h3>
+                            <span className='text-xs text-gray-400 whitespace-nowrap'>
+                              {job.createdAt}
+                            </span>
+                          </div>
+
+                          <div>
+                            <label className='label-field'>Título da vaga *</label>
+                            <input
+                              type='text'
+                              value={editInput.title}
+                              onChange={(event) =>
+                                setEditInput((currentInput) => ({
+                                  ...currentInput,
+                                  title: event.target.value,
+                                }))
+                              }
+                              className='input-field'
+                              required
+                            />
+                          </div>
+
+                          <div>
+                            <label className='label-field'>Cidade *</label>
+                            <select
+                              value={editInput.city}
+                              onChange={(event) =>
+                                setEditInput((currentInput) => ({
+                                  ...currentInput,
+                                  city: event.target.value,
+                                }))
+                              }
+                              className='input-field'
+                              required
+                            >
+                              <option value=''>Selecione</option>
+                              {cities.map((cityOption) => (
+                                <option key={cityOption} value={cityOption}>
+                                  {cityOption}
+                                </option>
+                              ))}
+                            </select>
+                          </div>
+
+                          <div>
+                            <label className='label-field'>
+                              Habilidade necessária *
+                            </label>
+                            <select
+                              value={editInput.skill}
+                              onChange={(event) =>
+                                setEditInput((currentInput) => ({
+                                  ...currentInput,
+                                  skill: event.target.value,
+                                }))
+                              }
+                              className='input-field'
+                              required
+                            >
+                              <option value=''>Selecione</option>
+                              {skills.map((skillOption) => (
+                                <option key={skillOption} value={skillOption}>
+                                  {skillOption}
+                                </option>
+                              ))}
+                            </select>
+                          </div>
+
+                          <div>
+                            <label className='label-field'>Prazo *</label>
+                            <input
+                              type='date'
+                              value={editInput.deadline}
+                              onChange={(event) =>
+                                setEditInput((currentInput) => ({
+                                  ...currentInput,
+                                  deadline: event.target.value,
+                                }))
+                              }
+                              className='input-field'
+                              required
+                            />
+                          </div>
+
+                          <div>
+                            <label className='label-field'>Descrição *</label>
+                            <textarea
+                              value={editInput.description}
+                              onChange={(event) =>
+                                setEditInput((currentInput) => ({
+                                  ...currentInput,
+                                  description: event.target.value,
+                                }))
+                              }
+                              className='input-field min-h-[100px] resize-none'
+                              required
+                            />
+                          </div>
+
+                          <div className='flex flex-col-reverse sm:flex-row sm:justify-end gap-2'>
+                            <button
+                              type='button'
+                              onClick={handleCancelEditing}
+                              disabled={isOperationRunning}
+                              className='inline-flex items-center justify-center gap-2 border border-gray-200 text-gray-600 hover:bg-gray-50 font-medium px-4 py-2.5 rounded-xl transition-colors disabled:cursor-not-allowed disabled:opacity-60'
+                            >
+                              <X className='w-4 h-4' />
+                              Cancelar
+                            </button>
+                            <button
+                              type='submit'
+                              disabled={isOperationRunning}
+                              className='btn-primary inline-flex items-center justify-center gap-2 disabled:cursor-not-allowed disabled:opacity-60'
+                            >
+                              {isSaving ? (
+                                <LoaderCircle className='w-4 h-4 animate-spin' />
+                              ) : (
+                                <Pencil className='w-4 h-4' />
+                              )}
+                              {isSaving ? 'Salvando...' : 'Salvar alterações'}
+                            </button>
+                          </div>
+                        </form>
+                      ) : (
+                        <>
                       <div className="flex items-start justify-between mb-2">
                         <h3 className="font-semibold text-navy-800">{job.title}</h3>
                         <span className="text-xs text-gray-400 whitespace-nowrap ml-4">
@@ -339,6 +741,35 @@ export default function JobBoard({ onNavigate }: JobBoardProps) {
                       <p className="text-sm text-gray-500 leading-relaxed">
                         {job.description}
                       </p>
+
+                          {canManage && (
+                            <div className='mt-4 flex flex-col sm:flex-row sm:justify-end gap-2'>
+                              <button
+                                type='button'
+                                onClick={() => handleStartEditing(job)}
+                                disabled={isOperationRunning}
+                                className='inline-flex items-center justify-center gap-2 border border-navy-200 text-navy-700 hover:bg-navy-50 text-sm font-medium px-4 py-2.5 rounded-xl transition-colors disabled:cursor-not-allowed disabled:opacity-60'
+                              >
+                                <Pencil className='w-4 h-4' />
+                                Editar
+                              </button>
+                              <button
+                                type='button'
+                                onClick={() => void handleDelete(job)}
+                                disabled={isOperationRunning}
+                                className='inline-flex items-center justify-center gap-2 border border-red-200 text-red-600 hover:bg-red-50 text-sm font-medium px-4 py-2.5 rounded-xl transition-colors disabled:cursor-not-allowed disabled:opacity-60'
+                              >
+                                {isDeleting ? (
+                                  <LoaderCircle className='w-4 h-4 animate-spin' />
+                                ) : (
+                                  <Trash2 className='w-4 h-4' />
+                                )}
+                                {isDeleting ? 'Excluindo...' : 'Excluir'}
+                              </button>
+                            </div>
+                          )}
+                        </>
+                      )}
 
                       <div className="mt-4 pt-4 border-t border-gray-100 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
                         <div className="flex items-center gap-2 min-w-0">

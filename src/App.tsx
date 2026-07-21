@@ -78,7 +78,7 @@ const handleGoogleLogin = async () => {
       )}
 
       {view === 'jobs' && (
-        <JobBoard onNavigate={setView} />
+        <JobBoard user={user} onNavigate={setView} />
       )}
     </>
   );

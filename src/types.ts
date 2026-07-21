@@ -10,6 +10,7 @@ export interface Professional {
 
 export interface Job {
   id: string;
+  companyId: string;
   title: string;
   city: string;
   skill: string;
