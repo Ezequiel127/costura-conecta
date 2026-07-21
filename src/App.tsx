@@ -1,8 +1,7 @@
 import { useEffect, useState } from 'react';
 import { supabase } from './supabaseClient';
 import type { User } from '@supabase/supabase-js';
-import { View, Job } from './types';
-import { initialJobs } from './data';
+import { View } from './types';
 import LandingPage from './components/LandingPage';
 import CompanyArea from './components/CompanyArea';
 import ProfessionalArea from './components/ProfessionalArea';
@@ -10,7 +9,6 @@ import JobBoard from './components/JobBoard';
 
 function App() {
   const [view, setView] = useState<View>('landing');
-  const [jobs, setJobs] = useState<Job[]>(initialJobs);
   const [user, setUser] = useState<User | null>(null);
 
   useEffect(() => {
@@ -26,10 +24,6 @@ function App() {
       listener.subscription.unsubscribe();
     };
   }, []);
-
-  const handlePublishJob = (job: Job) => {
-    setJobs((prev) => [job, ...prev]);
-  };
 
 const handleGoogleLogin = async () => {
   const { error } = await supabase.auth.signInWithOAuth({
@@ -84,7 +78,7 @@ const handleGoogleLogin = async () => {
       )}
 
       {view === 'jobs' && (
-        <JobBoard jobs={jobs} onPublish={handlePublishJob} onNavigate={setView} />
+        <JobBoard onNavigate={setView} />
       )}
     </>
   );

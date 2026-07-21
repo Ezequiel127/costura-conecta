@@ -1,4 +1,4 @@
-import { Professional, Job } from './types';
+import { Professional } from './types';
 
 export const initialProfessionals: Professional[] = [
   {
@@ -54,27 +54,6 @@ export const initialProfessionals: Professional[] = [
     availability: 'Integral',
     experience: '10 anos como modelista e risquista',
     whatsapp: '(89) 99999-0006',
-  },
-];
-
-export const initialJobs: Job[] = [
-  {
-    id: '1',
-    title: 'Costureira Overlock para produção',
-    city: 'Picos',
-    skill: 'Overlock',
-    deadline: '2026-05-15',
-    description: 'Precisamos de costureira com experiência em overlock para produção de camisetas. Turno integral, pagamento semanal.',
-    createdAt: '2026-04-25',
-  },
-  {
-    id: '2',
-    title: 'Bordadeira para encomenda especial',
-    city: 'Picos',
-    skill: 'Bordado',
-    deadline: '2026-05-30',
-    description: 'Buscamos bordadeira para encomenda de 200 peças com bordado personalizado. Trabalho remunerado por peça.',
-    createdAt: '2026-04-26',
   },
 ];
 
