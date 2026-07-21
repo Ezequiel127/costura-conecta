@@ -31,13 +31,47 @@ interface JobRow {
   deadline: string;
   description: string;
   created_at: string;
+  company_profiles?: unknown;
+}
+
+interface JobCompanyRow {
+  name: string;
+  phone?: string | null;
 }
 
 type CurrentCompanyResult =
-  | { success: true; company: { id: string; name: string } }
+  | { success: true; company: JobCompanyRow & { id: string } }
   | { success: false; reason: JobServiceFailureReason };
 
-function mapJob(row: JobRow): Job {
+function isJobCompanyRow(value: unknown): value is JobCompanyRow {
+  if (typeof value !== 'object' || value === null) {
+    return false;
+  }
+
+  const company = value as Record<string, unknown>;
+
+  return (
+    typeof company.name === 'string' &&
+    (company.phone === undefined ||
+      company.phone === null ||
+      typeof company.phone === 'string')
+  );
+}
+
+function getRelatedCompany(value: unknown): JobCompanyRow | null {
+  if (Array.isArray(value)) {
+    return value.find(isJobCompanyRow) ?? null;
+  }
+
+  return isJobCompanyRow(value) ? value : null;
+}
+
+function mapJob(row: JobRow, fallbackCompany?: JobCompanyRow): Job {
+  const company = getRelatedCompany(row.company_profiles) ?? fallbackCompany;
+  const companyName = company?.name.trim();
+  const companyPhone =
+    typeof company?.phone === 'string' ? company.phone.trim() : undefined;
+
   return {
     id: row.id,
     title: row.title,
@@ -46,6 +80,8 @@ function mapJob(row: JobRow): Job {
     deadline: row.deadline,
     description: row.description,
     createdAt: new Date(row.created_at).toLocaleDateString('pt-BR'),
+    companyName: companyName || undefined,
+    companyPhone: companyPhone || undefined,
   };
 }
 
@@ -65,6 +101,7 @@ async function getCurrentCompany(): Promise<CurrentCompanyResult> {
     company: {
       id: result.profile.id,
       name: result.profile.name,
+      phone: result.profile.phone,
     },
   };
 }
@@ -73,7 +110,9 @@ export async function getJobs(): Promise<GetJobsResult> {
   try {
     const { data, error } = await supabase
       .from('jobs')
-      .select('id, title, city, skill, deadline, description, created_at')
+      .select(
+        'id, title, city, skill, deadline, description, created_at, company_profiles(name, phone)'
+      )
       .order('created_at', { ascending: false });
 
     if (error) {
@@ -82,7 +121,7 @@ export async function getJobs(): Promise<GetJobsResult> {
 
     return {
       success: true,
-      jobs: (data as JobRow[]).map(mapJob),
+      jobs: (data as JobRow[]).map((row) => mapJob(row)),
     };
   } catch {
     return { success: false, reason: 'unexpected' };
@@ -107,7 +146,9 @@ export async function createJob(input: JobInput): Promise<CreateJobResult> {
         deadline: input.deadline,
         description: input.description.trim(),
       })
-      .select('id, title, city, skill, deadline, description, created_at')
+      .select(
+        'id, title, city, skill, deadline, description, created_at, company_profiles(name, phone)'
+      )
       .single();
 
     if (error || !data) {
@@ -116,7 +157,7 @@ export async function createJob(input: JobInput): Promise<CreateJobResult> {
 
     return {
       success: true,
-      job: mapJob(data as JobRow),
+      job: mapJob(data as JobRow, currentCompany.company),
     };
   } catch {
     return { success: false, reason: 'unexpected' };

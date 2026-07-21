@@ -16,6 +16,8 @@ export interface Job {
   deadline: string;
   description: string;
   createdAt: string;
+  companyName?: string;
+  companyPhone?: string;
 }
 
 export type View = 'landing' | 'company' | 'professional' | 'jobs';

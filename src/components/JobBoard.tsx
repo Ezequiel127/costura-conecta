@@ -3,10 +3,12 @@ import {
   AlertCircle,
   ArrowLeft,
   Briefcase,
+  Building2,
   CheckCircle,
   Clock,
   Loader2 as LoaderCircle,
   MapPin,
+  Phone,
   Plus,
   Wrench,
 } from 'lucide-react';
@@ -28,6 +30,51 @@ function formatDateOnly(date: string) {
   const [year, month, day] = date.split('-');
 
   return day && month && year ? [day, month, year].join('/') : date;
+}
+
+function normalizeBrazilianPhone(phone?: string): string | null {
+  if (!phone) {
+    return null;
+  }
+
+  const digits = phone.replace(/\D/g, '');
+  let nationalNumber: string;
+
+  if (digits.length === 10 || digits.length === 11) {
+    nationalNumber = digits;
+  } else if (
+    (digits.length === 12 || digits.length === 13) &&
+    digits.startsWith('55')
+  ) {
+    nationalNumber = digits.slice(2);
+  } else {
+    return null;
+  }
+
+  if (
+    !/^[1-9]\d{9,10}$/.test(nationalNumber) ||
+    /^(\d)\1+$/.test(nationalNumber)
+  ) {
+    return null;
+  }
+
+  return '55' + nationalNumber;
+}
+
+function getJobWhatsAppUrl(job: Job): string | null {
+  const normalizedPhone = normalizeBrazilianPhone(job.companyPhone);
+
+  if (!normalizedPhone) {
+    return null;
+  }
+
+  const message =
+    'Olá! Vi a vaga ' +
+    job.title +
+    ' no CosturaConecta e gostaria de saber mais.';
+  const searchParams = new URLSearchParams({ text: message });
+
+  return 'https://wa.me/' + normalizedPhone + '?' + searchParams.toString();
 }
 
 export default function JobBoard({ onNavigate }: JobBoardProps) {
@@ -264,31 +311,65 @@ export default function JobBoard({ onNavigate }: JobBoardProps) {
               </div>
             ) : (
               <div className="space-y-4">
-                {jobs.map((job) => (
-                  <div key={job.id} className="card">
-                    <div className="flex items-start justify-between mb-2">
-                      <h3 className="font-semibold text-navy-800">{job.title}</h3>
-                      <span className="text-xs text-gray-400 whitespace-nowrap ml-4">
-                        {job.createdAt}
-                      </span>
+                {jobs.map((job) => {
+                  const whatsAppUrl = getJobWhatsAppUrl(job);
+
+                  return (
+                    <div key={job.id} className="card">
+                      <div className="flex items-start justify-between mb-2">
+                        <h3 className="font-semibold text-navy-800">{job.title}</h3>
+                        <span className="text-xs text-gray-400 whitespace-nowrap ml-4">
+                          {job.createdAt}
+                        </span>
+                      </div>
+                      <div className="flex flex-wrap gap-3 mb-3 text-sm text-gray-600">
+                        <span className="flex items-center gap-1">
+                          <MapPin className="w-3.5 h-3.5 text-gray-400" />
+                          {job.city}
+                        </span>
+                        <span className="flex items-center gap-1">
+                          <Wrench className="w-3.5 h-3.5 text-gray-400" />
+                          {job.skill}
+                        </span>
+                        <span className="flex items-center gap-1">
+                          <Clock className="w-3.5 h-3.5 text-gray-400" />
+                          Prazo: {formatDateOnly(job.deadline)}
+                        </span>
+                      </div>
+                      <p className="text-sm text-gray-500 leading-relaxed">
+                        {job.description}
+                      </p>
+
+                      <div className="mt-4 pt-4 border-t border-gray-100 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                        <div className="flex items-center gap-2 min-w-0">
+                          <Building2 className="w-4 h-4 text-navy-500 flex-shrink-0" />
+                          <div className="min-w-0">
+                            <p className="text-xs text-gray-400">Empresa responsável</p>
+                            <p className="text-sm font-medium text-navy-800 truncate">
+                              {job.companyName || 'Empresa não informada'}
+                            </p>
+                          </div>
+                        </div>
+
+                        {whatsAppUrl ? (
+                          <a
+                            href={whatsAppUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="inline-flex items-center justify-center gap-2 bg-green-600 hover:bg-green-700 text-white text-sm font-medium px-4 py-2.5 rounded-xl transition-colors flex-shrink-0"
+                          >
+                            <Phone className="w-4 h-4" />
+                            Falar no WhatsApp
+                          </a>
+                        ) : (
+                          <span className="text-xs text-gray-400 sm:text-right">
+                            Contato não informado
+                          </span>
+                        )}
+                      </div>
                     </div>
-                    <div className="flex flex-wrap gap-3 mb-3 text-sm text-gray-600">
-                      <span className="flex items-center gap-1">
-                        <MapPin className="w-3.5 h-3.5 text-gray-400" />
-                        {job.city}
-                      </span>
-                      <span className="flex items-center gap-1">
-                        <Wrench className="w-3.5 h-3.5 text-gray-400" />
-                        {job.skill}
-                      </span>
-                      <span className="flex items-center gap-1">
-                        <Clock className="w-3.5 h-3.5 text-gray-400" />
-                        Prazo: {formatDateOnly(job.deadline)}
-                      </span>
-                    </div>
-                    <p className="text-sm text-gray-500 leading-relaxed">{job.description}</p>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             )}
           </div>
