@@ -26,7 +26,7 @@ interface ProfessionalProfileRow {
 
 export async function getProfessionalProfiles(): Promise<Professional[]> {
   const { data, error } = await supabase
-    .from('professional_profiles')
+    .from('public_professional_directory')
     .select('id, name, phone, city, skills, availability, experience')
     .order('created_at', { ascending: false });
 

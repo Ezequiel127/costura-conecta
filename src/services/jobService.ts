@@ -51,6 +51,11 @@ interface JobRow {
   company_profiles?: unknown;
 }
 
+interface PublicJobBoardRow extends JobRow {
+  company_name: string | null;
+  company_phone: string | null;
+}
+
 interface JobCompanyRow {
   name: string;
   phone?: string | null;
@@ -62,6 +67,9 @@ type CurrentCompanyResult =
 
 const jobSelect =
   'id, company_id, title, city, skill, deadline, description, created_at, company_profiles(name, phone)';
+
+const publicJobSelect =
+  'id, company_id, title, city, skill, deadline, description, created_at, company_name, company_phone';
 
 function isJobCompanyRow(value: unknown): value is JobCompanyRow {
   if (typeof value !== 'object' || value === null) {
@@ -104,6 +112,13 @@ function mapJob(row: JobRow, fallbackCompany?: JobCompanyRow): Job {
     companyName: companyName || undefined,
     companyPhone: companyPhone || undefined,
   };
+}
+
+function mapPublicJob(row: PublicJobBoardRow): Job {
+  return mapJob(row, {
+    name: row.company_name ?? '',
+    phone: row.company_phone,
+  });
 }
 
 function normalizeJobInput(input: JobInput): JobInput {
@@ -166,8 +181,8 @@ async function getCurrentCompany(): Promise<CurrentCompanyResult> {
 export async function getJobs(): Promise<GetJobsResult> {
   try {
     const { data, error } = await supabase
-      .from('jobs')
-      .select(jobSelect)
+      .from('public_job_board')
+      .select(publicJobSelect)
       .order('created_at', { ascending: false });
 
     if (error) {
@@ -176,7 +191,7 @@ export async function getJobs(): Promise<GetJobsResult> {
 
     return {
       success: true,
-      jobs: (data as JobRow[]).map((row) => mapJob(row)),
+      jobs: (data as PublicJobBoardRow[]).map(mapPublicJob),
     };
   } catch {
     return { success: false, reason: 'unexpected' };
