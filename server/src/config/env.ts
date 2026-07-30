@@ -17,6 +17,10 @@ const environmentSchema = z.object({
         .filter(Boolean)
     )
     .pipe(z.array(z.string().url()).min(1)),
+  AUTH_REDIRECT_URL: z.preprocess(
+    (value) => (value === '' ? undefined : value),
+    z.string().url().optional()
+  ),
 });
 
 export type AppEnvironment = z.infer<typeof environmentSchema>;

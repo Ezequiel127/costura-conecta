@@ -1,14 +1,19 @@
 import cors, { type CorsOptions } from 'cors';
 import express, { type Router } from 'express';
 import type { AppEnvironment } from './config/env.js';
+import {
+  createSupabaseClientProvider,
+  type SupabaseClientProvider,
+} from './config/supabase.js';
 import { AppError } from './errors/AppError.js';
 import { errorMiddleware } from './middlewares/error.middleware.js';
 import { notFoundMiddleware } from './middlewares/not-found.middleware.js';
-import { apiRoutes } from './routes/index.js';
+import { createApiRoutes } from './routes/index.js';
 
 interface CreateAppOptions {
   environment: AppEnvironment;
   router?: Router;
+  clientProvider?: SupabaseClientProvider;
 }
 
 function createCorsOptions(environment: AppEnvironment): CorsOptions {
@@ -33,15 +38,18 @@ function createCorsOptions(environment: AppEnvironment): CorsOptions {
 
 export function createApp({
   environment,
-  router = apiRoutes,
+  router,
+  clientProvider = createSupabaseClientProvider(environment),
 }: CreateAppOptions) {
   const app = express();
+  const applicationRouter =
+    router ?? createApiRoutes({ environment, clientProvider });
 
   app.disable('x-powered-by');
   app.use(cors(createCorsOptions(environment)));
   app.use(express.json({ limit: '100kb' }));
 
-  app.use('/api', router);
+  app.use('/api', applicationRouter);
 
   app.use(notFoundMiddleware);
   app.use(errorMiddleware);
