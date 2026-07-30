@@ -1,0 +1,821 @@
+openapi: 3.0.3
+info:
+  title: CosturaConecta REST API
+  description: |
+    API acadêmica do CosturaConecta para autenticação por e-mail e senha e
+    gerenciamento de vagas. O Supabase fornece Auth, PostgreSQL, Data API e
+    Row Level Security (RLS).
+
+    As consultas públicas de vagas leem a view `public.public_job_board`.
+    As mutações usam o token bearer do usuário autenticado e preservam as
+    políticas RLS existentes. A API não utiliza chave `service_role`.
+  version: 1.0.0
+servers:
+  - url: http://localhost:3001
+    description: Backend local
+tags:
+  - name: Health
+    description: Verificação do estado do serviço
+  - name: Autenticação
+    description: Cadastro e login com e-mail e senha
+  - name: Vagas
+    description: Leitura pública e mutações protegidas de vagas
+paths:
+  /api/health:
+    get:
+      tags:
+        - Health
+      summary: Verifica a disponibilidade da API
+      operationId: getHealth
+      responses:
+        '200':
+          description: Serviço disponível.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthSuccess'
+              example:
+                status: ok
+                service: costura-conecta-api
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /api/auth/register:
+    post:
+      tags:
+        - Autenticação
+      summary: Cadastra um usuário com e-mail e senha
+      description: |
+        Cria um usuário no Supabase Auth. Dependendo da configuração de
+        confirmação de e-mail, o cadastro pode retornar uma sessão imediata
+        ou `session: null`.
+      operationId: registerUser
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AuthCredentials'
+            example:
+              email: usuario@exemplo.invalid
+              password: senha-apenas-exemplo
+      responses:
+        '201':
+          description: Usuário cadastrado.
+          headers:
+            Cache-Control:
+              $ref: '#/components/headers/NoStore'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RegistrationSuccess'
+              examples:
+                immediateSession:
+                  summary: Cadastro com sessão imediata
+                  value:
+                    data:
+                      user:
+                        id: 7a6582f9-0bbd-4e32-a1a1-383f1243fc89
+                        email: usuario@exemplo.invalid
+                      session:
+                        accessToken: token-de-acesso-apenas-exemplo
+                        refreshToken: token-de-renovacao-apenas-exemplo
+                        tokenType: bearer
+                        expiresIn: 3600
+                        expiresAt: 1785412800
+                      emailConfirmationRequired: false
+                emailConfirmationRequired:
+                  summary: Cadastro aguardando confirmação de e-mail
+                  value:
+                    data:
+                      user:
+                        id: 7a6582f9-0bbd-4e32-a1a1-383f1243fc89
+                        email: usuario@exemplo.invalid
+                      session: null
+                      emailConfirmationRequired: true
+        '400':
+          description: Body inválido ou cadastro rejeitado pelo provedor.
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: '#/components/schemas/ValidationError'
+                  - $ref: '#/components/schemas/ApiError'
+              examples:
+                validation:
+                  $ref: '#/components/examples/ValidationError'
+                registrationRejected:
+                  summary: Cadastro rejeitado
+                  value:
+                    error:
+                      code: REGISTRATION_REJECTED
+                      message: Não foi possível concluir o cadastro.
+        '409':
+          description: Conflito de cadastro identificável sem expor dados da conta.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+              example:
+                error:
+                  code: AUTH_USER_CONFLICT
+                  message: Não foi possível concluir o cadastro.
+        '429':
+          $ref: '#/components/responses/AuthRateLimited'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /api/auth/login:
+    post:
+      tags:
+        - Autenticação
+      summary: Autentica um usuário com e-mail e senha
+      operationId: loginUser
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AuthCredentials'
+            example:
+              email: usuario@exemplo.invalid
+              password: senha-apenas-exemplo
+      responses:
+        '200':
+          description: Login realizado.
+          headers:
+            Cache-Control:
+              $ref: '#/components/headers/NoStore'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthSuccess'
+              example:
+                data:
+                  user:
+                    id: 7a6582f9-0bbd-4e32-a1a1-383f1243fc89
+                    email: usuario@exemplo.invalid
+                  session:
+                    accessToken: token-de-acesso-apenas-exemplo
+                    refreshToken: token-de-renovacao-apenas-exemplo
+                    tokenType: bearer
+                    expiresIn: 3600
+                    expiresAt: 1785412800
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          description: Credenciais inválidas ou e-mail ainda não confirmado.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+              examples:
+                invalidCredentials:
+                  summary: Credenciais inválidas
+                  value:
+                    error:
+                      code: INVALID_CREDENTIALS
+                      message: E-mail ou senha inválidos.
+                emailNotConfirmed:
+                  summary: E-mail não confirmado
+                  value:
+                    error:
+                      code: EMAIL_NOT_CONFIRMED
+                      message: Confirme seu e-mail antes de entrar.
+        '429':
+          $ref: '#/components/responses/AuthRateLimited'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /api/jobs:
+    get:
+      tags:
+        - Vagas
+      summary: Lista as vagas públicas
+      description: Retorna vagas ordenadas por `createdAt` de forma decrescente.
+      operationId: listJobs
+      responses:
+        '200':
+          description: Lista de vagas. Pode ser um array vazio.
+          headers:
+            Cache-Control:
+              $ref: '#/components/headers/NoStore'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/JobListSuccess'
+              example:
+                data:
+                  - id: 53cdad09-d898-43a5-925f-37bc6e07fb64
+                    companyId: f7ace785-557d-4532-92da-5ce27b86fe45
+                    title: Costureira para produção
+                    city: Picos
+                    skill: Máquina reta
+                    deadline: '2026-08-20'
+                    description: Produção de peças em malha.
+                    createdAt: '2026-07-30T12:00:00.000Z'
+                    company:
+                      name: Confecção Exemplo
+                      phone: '5589999999999'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+    post:
+      tags:
+        - Vagas
+      summary: Publica uma vaga
+      description: |
+        Resolve o perfil empresarial pelo usuário autenticado e define
+        `company_id` no servidor. O cliente não pode enviar identificadores
+        de propriedade.
+      operationId: createJob
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/JobInput'
+            example:
+              title: Costureira para produção
+              city: Picos
+              skill: Máquina reta
+              deadline: '2026-08-20'
+              description: Produção de peças em malha.
+      responses:
+        '201':
+          description: Vaga criada.
+          headers:
+            Cache-Control:
+              $ref: '#/components/headers/NoStore'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/JobSuccess'
+              example:
+                data:
+                  id: 53cdad09-d898-43a5-925f-37bc6e07fb64
+                  companyId: f7ace785-557d-4532-92da-5ce27b86fe45
+                  title: Costureira para produção
+                  city: Picos
+                  skill: Máquina reta
+                  deadline: '2026-08-20'
+                  description: Produção de peças em malha.
+                  createdAt: '2026-07-30T12:00:00.000Z'
+                  company:
+                    name: Confecção Exemplo
+                    phone: '5589999999999'
+        '400':
+          description: Body inválido ou usuário sem perfil empresarial.
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: '#/components/schemas/ValidationError'
+                  - $ref: '#/components/schemas/ApiError'
+              examples:
+                validation:
+                  $ref: '#/components/examples/ValidationError'
+                companyProfileRequired:
+                  summary: Perfil empresarial obrigatório
+                  value:
+                    error:
+                      code: COMPANY_PROFILE_REQUIRED
+                      message: É necessário possuir um perfil de empresa para publicar vagas.
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /api/jobs/{id}:
+    parameters:
+      - $ref: '#/components/parameters/JobId'
+    get:
+      tags:
+        - Vagas
+      summary: Consulta uma vaga pública
+      operationId: getJobById
+      responses:
+        '200':
+          description: Vaga encontrada.
+          headers:
+            Cache-Control:
+              $ref: '#/components/headers/NoStore'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/JobSuccess'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '404':
+          $ref: '#/components/responses/JobNotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+    put:
+      tags:
+        - Vagas
+      summary: Atualiza integralmente uma vaga
+      description: |
+        Exige todos os campos editáveis. Somente a empresa proprietária pode
+        atualizar; vaga inexistente e vaga de outra empresa produzem o mesmo
+        erro 404.
+      operationId: updateJob
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/JobInput'
+            example:
+              title: Costureira para coleção de verão
+              city: Picos
+              skill: Overloque
+              deadline: '2026-09-15'
+              description: Produção da nova coleção em tecidos leves.
+      responses:
+        '200':
+          description: Vaga atualizada.
+          headers:
+            Cache-Control:
+              $ref: '#/components/headers/NoStore'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/JobSuccess'
+        '400':
+          description: UUID, body ou perfil empresarial inválido/ausente.
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: '#/components/schemas/ValidationError'
+                  - $ref: '#/components/schemas/ApiError'
+              examples:
+                validation:
+                  $ref: '#/components/examples/ValidationError'
+                companyProfileRequired:
+                  summary: Perfil empresarial obrigatório
+                  value:
+                    error:
+                      code: COMPANY_PROFILE_REQUIRED
+                      message: É necessário possuir um perfil de empresa para publicar vagas.
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/JobNotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+    delete:
+      tags:
+        - Vagas
+      summary: Exclui uma vaga
+      description: |
+        Somente a empresa proprietária pode excluir. Vaga inexistente e vaga
+        de outra empresa produzem o mesmo erro 404.
+      operationId: deleteJob
+      security:
+        - bearerAuth: []
+      responses:
+        '204':
+          description: Vaga excluída. A resposta não possui corpo.
+          headers:
+            Cache-Control:
+              $ref: '#/components/headers/NoStore'
+        '400':
+          description: UUID inválido ou perfil empresarial ausente.
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: '#/components/schemas/ValidationError'
+                  - $ref: '#/components/schemas/ApiError'
+              examples:
+                validation:
+                  $ref: '#/components/examples/ValidationError'
+                companyProfileRequired:
+                  summary: Perfil empresarial obrigatório
+                  value:
+                    error:
+                      code: COMPANY_PROFILE_REQUIRED
+                      message: É necessário possuir um perfil de empresa para publicar vagas.
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/JobNotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: Token de acesso retornado pelo login. Use apenas tokens válidos do próprio ambiente.
+
+  headers:
+    NoStore:
+      description: Impede o armazenamento da resposta em cache.
+      schema:
+        type: string
+        example: no-store
+
+  parameters:
+    JobId:
+      name: id
+      in: path
+      required: true
+      description: Identificador UUID da vaga.
+      schema:
+        type: string
+        format: uuid
+      example: 53cdad09-d898-43a5-925f-37bc6e07fb64
+
+  schemas:
+    HealthSuccess:
+      type: object
+      additionalProperties: false
+      required:
+        - status
+        - service
+      properties:
+        status:
+          type: string
+          enum:
+            - ok
+        service:
+          type: string
+          enum:
+            - costura-conecta-api
+
+    AuthCredentials:
+      type: object
+      additionalProperties: false
+      required:
+        - email
+        - password
+      properties:
+        email:
+          type: string
+          format: email
+          maxLength: 254
+          description: E-mail normalizado para letras minúsculas.
+          example: usuario@exemplo.invalid
+        password:
+          type: string
+          minLength: 6
+          maxLength: 128
+          description: Senha enviada apenas ao endpoint de autenticação.
+          example: senha-apenas-exemplo
+
+    AuthUser:
+      type: object
+      additionalProperties: false
+      required:
+        - id
+        - email
+      properties:
+        id:
+          type: string
+          format: uuid
+          example: 7a6582f9-0bbd-4e32-a1a1-383f1243fc89
+        email:
+          type: string
+          format: email
+          nullable: true
+          example: usuario@exemplo.invalid
+
+    AuthSession:
+      type: object
+      additionalProperties: false
+      required:
+        - accessToken
+        - refreshToken
+        - tokenType
+        - expiresIn
+        - expiresAt
+      properties:
+        accessToken:
+          type: string
+          description: Token sensível; o exemplo não é utilizável.
+          example: token-de-acesso-apenas-exemplo
+        refreshToken:
+          type: string
+          description: Token sensível; o exemplo não é utilizável.
+          example: token-de-renovacao-apenas-exemplo
+        tokenType:
+          type: string
+          example: bearer
+        expiresIn:
+          type: integer
+          minimum: 0
+          example: 3600
+        expiresAt:
+          type: integer
+          format: int64
+          nullable: true
+          minimum: 0
+          example: 1785412800
+
+    AuthSuccess:
+      type: object
+      additionalProperties: false
+      required:
+        - data
+      properties:
+        data:
+          type: object
+          additionalProperties: false
+          required:
+            - user
+            - session
+          properties:
+            user:
+              $ref: '#/components/schemas/AuthUser'
+            session:
+              $ref: '#/components/schemas/AuthSession'
+
+    RegistrationSuccess:
+      type: object
+      additionalProperties: false
+      required:
+        - data
+      properties:
+        data:
+          type: object
+          additionalProperties: false
+          required:
+            - user
+            - session
+            - emailConfirmationRequired
+          properties:
+            user:
+              nullable: true
+              allOf:
+                - $ref: '#/components/schemas/AuthUser'
+            session:
+              nullable: true
+              allOf:
+                - $ref: '#/components/schemas/AuthSession'
+            emailConfirmationRequired:
+              type: boolean
+
+    JobInput:
+      type: object
+      additionalProperties: false
+      required:
+        - title
+        - city
+        - skill
+        - deadline
+        - description
+      properties:
+        title:
+          type: string
+          minLength: 3
+          maxLength: 120
+          example: Costureira para produção
+        city:
+          type: string
+          minLength: 2
+          maxLength: 100
+          example: Picos
+        skill:
+          type: string
+          minLength: 2
+          maxLength: 100
+          example: Máquina reta
+        deadline:
+          type: string
+          format: date
+          pattern: '^\d{4}-\d{2}-\d{2}$'
+          example: '2026-08-20'
+        description:
+          type: string
+          minLength: 10
+          maxLength: 2000
+          example: Produção de peças em malha.
+
+    CompanySummary:
+      type: object
+      additionalProperties: false
+      required:
+        - name
+        - phone
+      properties:
+        name:
+          type: string
+          nullable: true
+          example: Confecção Exemplo
+        phone:
+          type: string
+          nullable: true
+          example: '5589999999999'
+
+    Job:
+      type: object
+      additionalProperties: false
+      required:
+        - id
+        - companyId
+        - title
+        - city
+        - skill
+        - deadline
+        - description
+        - createdAt
+        - company
+      properties:
+        id:
+          type: string
+          format: uuid
+          example: 53cdad09-d898-43a5-925f-37bc6e07fb64
+        companyId:
+          type: string
+          format: uuid
+          readOnly: true
+          example: f7ace785-557d-4532-92da-5ce27b86fe45
+        title:
+          type: string
+          example: Costureira para produção
+        city:
+          type: string
+          example: Picos
+        skill:
+          type: string
+          example: Máquina reta
+        deadline:
+          type: string
+          format: date
+          example: '2026-08-20'
+        description:
+          type: string
+          example: Produção de peças em malha.
+        createdAt:
+          type: string
+          format: date-time
+          readOnly: true
+          example: '2026-07-30T12:00:00.000Z'
+        company:
+          $ref: '#/components/schemas/CompanySummary'
+
+    JobSuccess:
+      type: object
+      additionalProperties: false
+      required:
+        - data
+      properties:
+        data:
+          $ref: '#/components/schemas/Job'
+
+    JobListSuccess:
+      type: object
+      additionalProperties: false
+      required:
+        - data
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/Job'
+
+    ValidationDetail:
+      type: object
+      additionalProperties: false
+      required:
+        - field
+        - message
+      properties:
+        field:
+          type: string
+          example: deadline
+        message:
+          type: string
+          example: Valor inválido.
+
+    ValidationError:
+      type: object
+      additionalProperties: false
+      required:
+        - error
+      properties:
+        error:
+          type: object
+          additionalProperties: false
+          required:
+            - code
+            - message
+            - details
+          properties:
+            code:
+              type: string
+              enum:
+                - VALIDATION_ERROR
+            message:
+              type: string
+              enum:
+                - Dados da requisição inválidos.
+            details:
+              type: array
+              items:
+                $ref: '#/components/schemas/ValidationDetail'
+
+    ApiError:
+      type: object
+      additionalProperties: false
+      required:
+        - error
+      properties:
+        error:
+          type: object
+          additionalProperties: false
+          required:
+            - code
+            - message
+          properties:
+            code:
+              type: string
+              example: INTERNAL_ERROR
+            message:
+              type: string
+              example: Ocorreu um erro interno.
+
+  responses:
+    ValidationError:
+      description: Dados da requisição inválidos.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ValidationError'
+          example:
+            error:
+              code: VALIDATION_ERROR
+              message: Dados da requisição inválidos.
+              details: []
+
+    Unauthorized:
+      description: Bearer ausente, malformado, expirado ou inválido.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ApiError'
+          examples:
+            authRequired:
+              summary: Header ausente
+              value:
+                error:
+                  code: AUTH_REQUIRED
+                  message: Autenticação necessária.
+            invalidToken:
+              summary: Token inválido
+              value:
+                error:
+                  code: INVALID_TOKEN
+                  message: Token de acesso inválido ou expirado.
+
+    JobNotFound:
+      description: Vaga inexistente ou não pertencente à empresa autenticada.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ApiError'
+          example:
+            error:
+              code: JOB_NOT_FOUND
+              message: Vaga não encontrada.
+
+    AuthRateLimited:
+      description: Limite de tentativas de autenticação atingido.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ApiError'
+          example:
+            error:
+              code: AUTH_RATE_LIMITED
+              message: Muitas tentativas. Tente novamente mais tarde.
+
+    InternalError:
+      description: Erro interno sanitizado.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ApiError'
+          example:
+            error:
+              code: INTERNAL_ERROR
+              message: Ocorreu um erro interno.
+
+  examples:
+    ValidationError:
+      summary: Erro de validação
+      value:
+        error:
+          code: VALIDATION_ERROR
+          message: Dados da requisição inválidos.
+          details: []
