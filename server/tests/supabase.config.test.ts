@@ -44,6 +44,24 @@ describe('configuração dos clientes Supabase', () => {
     );
   });
 
+  it('cria o cliente público sem autenticação ou persistência', () => {
+    const provider = createSupabaseClientProvider(testEnvironment);
+
+    provider.createPublicClient();
+
+    expect(createClientMock).toHaveBeenCalledWith(
+      testEnvironment.SUPABASE_URL,
+      testEnvironment.SUPABASE_PUBLISHABLE_KEY,
+      {
+        auth: {
+          autoRefreshToken: false,
+          persistSession: false,
+          detectSessionInUrl: false,
+        },
+      }
+    );
+  });
+
   it('cria o cliente contextual com o bearer e sem persistência', () => {
     const provider = createSupabaseClientProvider(testEnvironment);
 

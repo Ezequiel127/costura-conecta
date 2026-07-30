@@ -45,6 +45,7 @@ function createMockClientProvider() {
   const contextualClient = {} as SupabaseClient;
   const clientProvider: SupabaseClientProvider = {
     createAuthClient: vi.fn(() => authClient),
+    createPublicClient: vi.fn(() => authClient),
     createContextualClient: vi.fn(() => contextualClient),
   };
 

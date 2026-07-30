@@ -34,6 +34,7 @@ function createMiddlewareTestContext() {
   const contextualClient = {} as SupabaseClient;
   const clientProvider: SupabaseClientProvider = {
     createAuthClient: vi.fn(() => verificationClient),
+    createPublicClient: vi.fn(() => verificationClient),
     createContextualClient: vi.fn(() => contextualClient),
   };
   const router = Router();

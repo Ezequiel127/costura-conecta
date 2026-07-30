@@ -32,3 +32,24 @@ export function validateBody(schema: z.ZodType): RequestHandler {
     next();
   };
 }
+
+export function validateParams(schema: z.ZodType): RequestHandler {
+  return (request, _response, next) => {
+    const result = schema.safeParse(request.params);
+
+    if (!result.success) {
+      next(
+        new AppError(
+          400,
+          'VALIDATION_ERROR',
+          'Dados da requisição inválidos.',
+          []
+        )
+      );
+      return;
+    }
+
+    request.params = result.data as typeof request.params;
+    next();
+  };
+}
