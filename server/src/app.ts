@@ -1,5 +1,5 @@
 import cors, { type CorsOptions } from 'cors';
-import express, { type Router } from 'express';
+import express, { type Request, type Response, type Router } from 'express';
 import type { AppEnvironment } from './config/env.js';
 import {
   createSupabaseClientProvider,
@@ -55,4 +55,23 @@ export function createApp({
   app.use(errorMiddleware);
 
   return app;
+}
+
+let vercelAppPromise: Promise<ReturnType<typeof createApp>> | undefined;
+
+function getVercelApp() {
+  vercelAppPromise ??= import('./config/env.js').then(
+    ({ loadEnvironment }) =>
+      createApp({
+        environment: loadEnvironment(),
+      })
+  );
+
+  return vercelAppPromise;
+}
+
+export default async function handler(request: Request, response: Response) {
+  const app = await getVercelApp();
+
+  app(request, response);
 }
