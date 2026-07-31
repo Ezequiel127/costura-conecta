@@ -11,6 +11,8 @@ info:
     políticas RLS existentes. A API não utiliza chave `service_role`.
   version: 1.0.0
 servers:
+  - url: https://costura-conecta-api.vercel.app
+    description: API de produção na Vercel
   - url: http://localhost:3001
     description: Backend local
 tags:

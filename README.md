@@ -11,6 +11,11 @@ O repositório contém dois pacotes:
 - o frontend React/Vite na raiz;
 - a API REST Node.js/Express em [`server/`](server/).
 
+Ambos estão publicados na Vercel em implantações separadas:
+
+- frontend: <https://costura-conecta.vercel.app>;
+- API REST: <https://costura-conecta-api.vercel.app>.
+
 A especificação completa da API está em
 [`server/docs/openapi.yaml`](server/docs/openapi.yaml).
 
@@ -47,13 +52,13 @@ O CosturaConecta propõe centralizar:
 ## 5. Arquitetura atual
 
 O frontend e a API Express coexistem no mesmo repositório, mas são pacotes npm
-independentes.
+independentes e possuem implantações separadas na Vercel.
 
 ```text
 Frontend React/Vite
 ├── Supabase Auth e Google OAuth
 ├── acesso atual ao Supabase por services do frontend
-└── deploy existente na Vercel
+└── https://costura-conecta.vercel.app
 
 API Express/TypeScript (server/)
 ├── routes
@@ -61,7 +66,8 @@ API Express/TypeScript (server/)
 ├── controllers
 ├── schemas Zod
 ├── services
-└── Supabase Auth/Data API com chave publicável
+├── Supabase Auth/Data API com chave publicável e bearer do usuário
+└── https://costura-conecta-api.vercel.app
 
 Supabase
 ├── Auth
@@ -71,8 +77,10 @@ Supabase
 └── Row Level Security
 ```
 
-O frontend ainda não consome a API Express. A migração de chamadas diretas do
-Supabase para a API será feita posteriormente e de forma incremental.
+O frontend ainda não consome a API Express: autenticação, perfis e vagas usam
+diretamente o cliente Supabase e os services em `src/services/`. A integração
+frontend-API é uma melhoria futura e será feita posteriormente, de forma
+incremental; a publicação da API não altera esse fluxo atual.
 
 ## 6. Tecnologias
 
@@ -108,7 +116,7 @@ Infraestrutura:
 - PostgreSQL
 - Supabase Data API
 - Row Level Security
-- Vercel para o frontend
+- Vercel para as implantações separadas do frontend e da API
 
 ## 7. Funcionalidades implementadas
 
@@ -127,6 +135,7 @@ Infraestrutura:
 - Testes automatizados do backend com Supabase mockado.
 - Documentação OpenAPI de todas as rotas implementadas.
 - Frontend implantado na Vercel.
+- API Express implantada separadamente na Vercel.
 
 ## 8. Rotas da API REST
 
@@ -188,7 +197,11 @@ Frontend:
 | --- | --- | --- |
 | `VITE_SUPABASE_URL` | Sim | URL pública do projeto Supabase |
 | `VITE_SUPABASE_PUBLISHABLE_KEY` | Sim | Chave publicável usada pelo frontend |
-| `VITE_API_BASE_URL` | Ainda não | Preparada para a futura integração do frontend com a API Express; ainda não é consumida |
+
+Não há variável de URL da API no frontend atual, pois essa integração ainda não
+foi implementada. Quando o frontend passar a consumir a API, a variável
+correspondente deverá ser adicionada ao código, ao `.env.example` e a esta
+documentação no mesmo incremento.
 
 Backend:
 
@@ -208,7 +221,7 @@ frontend ou ao backend.
 
 Pré-requisitos:
 
-- Node.js compatível com os pacotes do projeto;
+- Node.js 20 ou superior para o backend;
 - npm;
 - um projeto Supabase já configurado.
 
@@ -266,6 +279,8 @@ npm run build
 ```
 
 Os testes usam mocks do Supabase e não acessam o projeto hospedado.
+No estado verificado desta documentação, a suíte do backend concluiu com
+**46/46 testes aprovados**.
 
 ## 16. Contrato de erros HTTP
 
@@ -334,35 +349,59 @@ CosturaConecta/
 
 ## 18. Limitações atuais
 
-Ainda não implementado ou não verificado:
+- O frontend ainda não consome a API Express e continua acessando o Supabase
+  diretamente.
+- A API REST ainda não oferece endpoints de perfis, refresh token,
+  administração, paginação ou filtros adicionais.
+- Moderação, papéis administrativos, avaliações e fluxos de
+  interesse/contratação ainda não foram implementados.
+- A Fase 1 de fortalecimento de segurança (`hardening`) introduziu as views
+  públicas `public_professional_directory` e `public_job_board`, mas preservou
+  o acesso direto existente às tabelas base para manter compatibilidade com o frontend.
+  Portanto, a revisão e a redução dessa exposição continuam no backlog; a
+  existência das views não significa que todo acesso público direto às tabelas
+  base já foi removido.
+- Swagger UI ainda não está disponível.
 
-- frontend consumindo a API Express;
-- deploy do backend;
-- testes reais de integração da API com o Supabase hospedado;
-- paginação da listagem de vagas;
-- moderação;
-- papéis administrativos;
-- Fase 2 do hardening de dados: remoção da exposição pública direta das
-  tabelas base ainda existente;
-- Swagger UI.
+## 19. Implantação e validações de produção
 
-## 19. Status de deployment
+Os componentes publicados são independentes:
 
-- Frontend: implantado e funcionando na Vercel.
-- Supabase: Auth e banco hospedados sustentam a aplicação atual.
-- API Express: ainda não implantada; executada e validada apenas localmente.
+| Componente | URL de produção | Situação |
+| --- | --- | --- |
+| Frontend React/Vite | <https://costura-conecta.vercel.app> | Implantado na Vercel; ainda acessa o Supabase diretamente |
+| API Express | <https://costura-conecta-api.vercel.app> | Implantada separadamente na Vercel e conectada ao Supabase hospedado |
+| Supabase | Configuração externa, sem URL publicada neste documento | Auth, PostgreSQL, Data API, views públicas e RLS |
 
-O frontend implantado ainda usa os services Supabase existentes e não consome
-a API Express. Também não foi executada uma suíte de integração real da API
-contra o Supabase hospedado.
+A API usa a chave publicável do Supabase e, nas operações protegidas, o bearer
+token do usuário. Ela não usa `service_role`.
+
+As seguintes verificações foram concluídas no ambiente de produção para o
+estado registrado nesta documentação:
+
+- `GET /api/health`: HTTP `200`;
+- `GET /api/jobs`: HTTP `200`, com dados reais persistidos;
+- login por e-mail e senha pela API de produção: validado;
+- CRUD protegido de vagas: `POST /api/jobs` com `201`,
+  `PUT /api/jobs/{id}` com `200` e `DELETE /api/jobs/{id}` com `204`;
+- consulta da vaga após a exclusão: HTTP `404` com código `JOB_NOT_FOUND`;
+- preflight CORS originado de <https://costura-conecta.vercel.app>: HTTP `204`,
+  permitindo os métodos `GET`, `POST`, `PUT`, `PATCH`, `DELETE` e `OPTIONS`, e
+  os cabeçalhos `Authorization` e `Content-Type`;
+- suíte automatizada do backend: **46/46 testes aprovados**.
+
+Essas verificações validam a API diretamente. Elas não significam que o
+frontend já esteja integrado à API Express.
 
 ## 20. Roadmap
 
 1. Integrar gradualmente o frontend com a API Express.
-2. Definir e executar testes de integração em ambiente Supabase controlado.
-3. Preparar e implantar o backend sem alterar o frontend em produção.
+2. Reduzir a exposição pública direta das tabelas base após eliminar as
+   dependências correspondentes do frontend.
+3. Ampliar os testes de integração e automatizar verificações do ambiente
+   implantado de forma controlada.
 4. Adicionar paginação e filtros REST.
-5. Reduzir a exposição pública direta das tabelas base.
+5. Adicionar endpoints REST de perfis conforme o modelo de permissões.
 6. Adicionar fluxos de interesse/contratação.
 7. Implementar moderação, avaliações e papéis administrativos.
 8. Disponibilizar Swagger UI a partir da especificação OpenAPI.
